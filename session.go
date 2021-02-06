@@ -25,6 +25,7 @@ type sessionData struct {
 	Cookies   []*http.Cookie
 }
 
+// Session represents a connection to the Nissan API server.
 type Session struct {
 	Username string
 	Password string
@@ -36,6 +37,7 @@ type Session struct {
 	data sessionData
 }
 
+// Load reads existing session data from the state file.
 func (s *Session) Load() error {
 	if s.Filename == "" {
 		return nil
@@ -183,15 +185,18 @@ func (s *Session) doRetryAuth(method, endpoint string, v interface{}) (*http.Res
 	return resp, err
 }
 
+// TimeRequired represents the time needed until fully charged.
 type TimeRequired struct {
 	HourRequiredToFull    int `json:"hourRequiredToFull"`
 	MinutesRequiredToFull int `json:"minutesRequiredToFull"`
 }
 
+// IsZero checks if the charge time is 0.
 func (tr TimeRequired) IsZero() bool {
 	return tr.HourRequiredToFull == 0 && tr.MinutesRequiredToFull == 0
 }
 
+// String returns a human readable duration in minutes or hours and minutes.
 func (tr TimeRequired) String() string {
 	if tr.HourRequiredToFull > 0 {
 		return fmt.Sprintf("%dh%dm", tr.HourRequiredToFull, tr.MinutesRequiredToFull)
@@ -199,8 +204,10 @@ func (tr TimeRequired) String() string {
 	return fmt.Sprintf("%dm", tr.MinutesRequiredToFull)
 }
 
+// ChargingStatus represents the current charging status.
 type ChargingStatus string
 
+// String converts the charging status to "yes" or "no".
 func (cs ChargingStatus) String() string {
 	switch cs {
 	case "NO":
@@ -212,6 +219,7 @@ func (cs ChargingStatus) String() string {
 	}
 }
 
+// IsCharging returns true if the vehicle is charging.
 func (cs ChargingStatus) IsCharging() bool {
 	switch cs {
 	case "YES":
@@ -221,8 +229,10 @@ func (cs ChargingStatus) IsCharging() bool {
 	}
 }
 
+// PluginState represents whether the vehicle is plugged in (not necessarily charging).
 type PluginState string
 
+// String converts the plugin state to "connected" or "not connected".
 func (ps PluginState) String() string {
 	switch ps {
 	case "NOT_CONNECTED":
@@ -234,6 +244,7 @@ func (ps PluginState) String() string {
 	}
 }
 
+// BatteryRecords represents all known information about the vehicle's battery and charging state.
 type BatteryRecords struct {
 	LastUpdatedDateAndTime time.Time `json:"lastUpdatedDateAndTime"`
 	BatteryStatus          struct {
@@ -252,10 +263,12 @@ type BatteryRecords struct {
 	TimeRequired200_6kW TimeRequired `json:"timeRequired200_6kW"`
 }
 
+// TemperatureRecords represent the current interior temperature.
 type TemperatureRecords struct {
 	Temperature string `json:"inc_temp"`
 }
 
+// VehicleInfo reprents the model, year and appearance of the vehicle.
 type VehicleInfo struct {
 	VIN       string `json:"uvi"`
 	ModelName string `json:"modelname"`
@@ -264,6 +277,7 @@ type VehicleInfo struct {
 	Nickname  string `json:"nickname"`
 }
 
+// Login sets up a new session with the Nissan API and retrieves the last known vehicle, battery and temperature records.
 func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, error) {
 	var reqBody struct {
 		Authenticate struct {
@@ -333,6 +347,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, e
 	return &vehicle.VehicleInfo, &vehicle.BatteryRecords, &vehicle.TemperatureRecords, nil
 }
 
+// ChargingStatus returns the current battery and temperature records.
 func (s *Session) ChargingStatus() (*BatteryRecords, *TemperatureRecords, error) {
 	resp, err := s.doRetryAuth(
 		"GET",
@@ -392,14 +407,17 @@ func (s *Session) climateOnOff(on bool) error {
 	return nil
 }
 
+// ClimateOn turns on the HVAC system.
 func (s *Session) ClimateOn() error {
 	return s.climateOnOff(true)
 }
 
+// ClimateOff turns off the HVAC system.
 func (s *Session) ClimateOff() error {
 	return s.climateOnOff(false)
 }
 
+// StartCharging turns on the vehicle charger.
 func (s *Session) StartCharging() error {
 	resp, err := s.doRetryAuth(
 		"POST",
@@ -423,12 +441,14 @@ func (s *Session) StartCharging() error {
 	return nil
 }
 
+// Location represents the GPS position of the vehicle.
 type Location struct {
 	Latitude     string
 	Longitude    string
 	ReceivedDate time.Time
 }
 
+// LocateVehicle returns the current vehicle location.
 func (s *Session) LocateVehicle() (*Location, error) {
 	now := time.Now().UTC()
 	start := now.Add(-30 * 24 * time.Hour)
