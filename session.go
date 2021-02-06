@@ -328,7 +328,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
 	return &vehicle.VehicleInfo, &vehicle.BatteryRecords, nil
 }
 
-func (s *Session) BatteryStatus() (*BatteryRecords, error) {
+func (s *Session) ChargingStatus() (*BatteryRecords, error) {
 	resp, err := s.doRetryAuth(
 		"GET",
 		fmt.Sprintf("/battery/vehicles/%s/getChargingStatusRequest", s.data.VIN),

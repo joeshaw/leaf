@@ -145,7 +145,7 @@ func updateCmd(cfg *config) *ffcli.Command {
 
 			s := newSession(cfg)
 
-			br, err := s.BatteryStatus()
+			br, _, err := s.ChargingStatus()
 			if err != nil {
 				return err
 			}
