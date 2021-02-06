@@ -173,7 +173,7 @@ func (s *Session) do(method, endpoint string, v interface{}) (*http.Response, er
 func (s *Session) doRetryAuth(method, endpoint string, v interface{}) (*http.Response, error) {
 	resp, err := s.do(method, endpoint, v)
 	if errors.Is(err, errUnauthorized) {
-		if _, _, err := s.Login(); err != nil {
+		if _, _, _, err := s.Login(); err != nil {
 			return nil, err
 		}
 
@@ -252,6 +252,10 @@ type BatteryRecords struct {
 	TimeRequired200_6kW TimeRequired `json:"timeRequired200_6kW"`
 }
 
+type TemperatureRecords struct {
+	Temperature string `json:"inc_temp"`
+}
+
 type VehicleInfo struct {
 	VIN       string `json:"uvi"`
 	ModelName string `json:"modelname"`
@@ -260,7 +264,7 @@ type VehicleInfo struct {
 	Nickname  string `json:"nickname"`
 }
 
-func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
+func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, error) {
 	var reqBody struct {
 		Authenticate struct {
 			UserID   string `json:"userid"`
@@ -277,7 +281,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
 
 	resp, err := s.do("POST", "/auth/authenticationForAAS", reqBody)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer resp.Body.Close()
 
@@ -285,17 +289,18 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
 		Vehicles []struct {
 			VehicleInfo
 			BatteryRecords BatteryRecords `json:"batteryRecords"`
+			TemperatureRecords TemperatureRecords `json:"temperatureRecords"`
 		} `json:"vehicles"`
 		AuthToken    string `json:"authToken"`
 		RefreshToken string `json:"refreshToken"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if len(respBody.Vehicles) == 0 {
-		return nil, nil, fmt.Errorf("no vehicles found")
+		return nil, nil, nil, fmt.Errorf("no vehicles found")
 	}
 
 	// If multiple VINs are found, allow the user to choose a match.
@@ -309,7 +314,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
 			}
 		}
 		if idx == -1 {
-			return nil, nil, fmt.Errorf("no matching VIN %s found amon %d vehicles", s.VIN, len(respBody.Vehicles))
+			return nil, nil, nil, fmt.Errorf("no matching VIN %s found amon %d vehicles", s.VIN, len(respBody.Vehicles))
 		}
 	} else {
 		idx = 0
@@ -325,29 +330,30 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, error) {
 		s.save()
 	}
 
-	return &vehicle.VehicleInfo, &vehicle.BatteryRecords, nil
+	return &vehicle.VehicleInfo, &vehicle.BatteryRecords, &vehicle.TemperatureRecords, nil
 }
 
-func (s *Session) ChargingStatus() (*BatteryRecords, error) {
+func (s *Session) ChargingStatus() (*BatteryRecords, *TemperatureRecords, error) {
 	resp, err := s.doRetryAuth(
 		"GET",
 		fmt.Sprintf("/battery/vehicles/%s/getChargingStatusRequest", s.data.VIN),
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	var respBody struct {
 		BatteryRecords BatteryRecords `json:"batteryRecords"`
+		TemperatureRecords TemperatureRecords `json:"temperatureRecords"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &respBody.BatteryRecords, nil
+	return &respBody.BatteryRecords, &respBody.TemperatureRecords, nil
 }
 
 type commonResponse struct {
