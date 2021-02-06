@@ -288,7 +288,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, e
 	var respBody struct {
 		Vehicles []struct {
 			VehicleInfo
-			BatteryRecords BatteryRecords `json:"batteryRecords"`
+			BatteryRecords     BatteryRecords     `json:"batteryRecords"`
 			TemperatureRecords TemperatureRecords `json:"temperatureRecords"`
 		} `json:"vehicles"`
 		AuthToken    string `json:"authToken"`
@@ -345,7 +345,7 @@ func (s *Session) ChargingStatus() (*BatteryRecords, *TemperatureRecords, error)
 	defer resp.Body.Close()
 
 	var respBody struct {
-		BatteryRecords BatteryRecords `json:"batteryRecords"`
+		BatteryRecords     BatteryRecords     `json:"batteryRecords"`
 		TemperatureRecords TemperatureRecords `json:"temperatureRecords"`
 	}
 
