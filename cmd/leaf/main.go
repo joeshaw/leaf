@@ -97,7 +97,7 @@ func infoCmd(cfg *config) *ffcli.Command {
 
 			s := newSession(cfg)
 
-			info, _, err := s.Login()
+			info, _, _, err := s.Login()
 			if err != nil {
 				return err
 			}
@@ -123,7 +123,7 @@ func batteryCmd(cfg *config) *ffcli.Command {
 
 			s := newSession(cfg)
 
-			_, br, err := s.Login()
+			_, br, _, err := s.Login()
 			if err != nil {
 				return err
 			}
@@ -145,7 +145,7 @@ func updateCmd(cfg *config) *ffcli.Command {
 
 			s := newSession(cfg)
 
-			br, err := s.BatteryStatus()
+			br, _, err := s.ChargingStatus()
 			if err != nil {
 				return err
 			}
