@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-const baseURL = "https://icm.infinitiusa.com/NissanLeafProd/rest"
-const apiKey = "f950a00e-73a5-11e7-8cf7-a6006ad3dba0"
+const baseURL = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
+const apiKey = "Z9bNvSz8NZf0J3fLhwA3U27G4HQpwMBMYPHd3B+uzeWstfRPEue8AoS/xjIz34k8"
 
 var errUnauthorized = errors.New("unauthorized")
 
