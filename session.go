@@ -14,8 +14,11 @@ import (
 	"time"
 )
 
-const baseURL = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
-const apiKey = "Z9bNvSz8NZf0J3fLhwA3U27G4HQpwMBMYPHd3B+uzeWstfRPEue8AoS/xjIz34k8"
+const (
+	baseURL      = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
+	apiKey       = "Z9bNvSz8NZf0J3fLhwA3U27G4HQpwMBMYPHd3B+uzeWstfRPEue8AoS/xjIz34k8"
+	userAgentKey = "pZiN3BSpfjtVulW6QB52Itw6rc5YEDZXKGlKzGsTvPY="
+)
 
 var errUnauthorized = errors.New("unauthorized")
 
@@ -104,6 +107,7 @@ func (s *Session) do(method, endpoint string, v interface{}) (*http.Response, er
 	}
 
 	req.Header.Set("API-Key", apiKey)
+	req.Header.Set("User-Agent-Key", userAgentKey)
 
 	if r != nil {
 		req.Header.Set("Content-Type", "application/json")
