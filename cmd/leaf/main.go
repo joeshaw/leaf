@@ -123,12 +123,12 @@ func batteryCmd(cfg *config) *ffcli.Command {
 
 			s := newSession(cfg)
 
-			_, br, _, err := s.Login()
+			vi, br, _, err := s.Login()
 			if err != nil {
 				return err
 			}
 
-			printBatteryRecords(cfg, br)
+			printBatteryRecords(cfg, vi, br)
 
 			return nil
 		},
@@ -150,7 +150,7 @@ func updateCmd(cfg *config) *ffcli.Command {
 				return err
 			}
 
-			printBatteryRecords(cfg, br)
+			printBatteryRecords(cfg, s.VehicleInfo(), br)
 
 			return nil
 		},
@@ -171,6 +171,9 @@ func climateOnCmd(cfg *config) *ffcli.Command {
 				return err
 			}
 
+			vi := s.VehicleInfo()
+			fmt.Printf("Climate control turned on for %s (%s)\n", vi.Nickname, vi.VIN)
+
 			return nil
 		},
 	}
@@ -190,6 +193,9 @@ func climateOffCmd(cfg *config) *ffcli.Command {
 				return err
 			}
 
+			vi := s.VehicleInfo()
+			fmt.Printf("Climate control turned off for %s (%s)\n", vi.Nickname, vi.VIN)
+
 			return nil
 		},
 	}
@@ -208,6 +214,9 @@ func chargeCmd(cfg *config) *ffcli.Command {
 			if err := s.StartCharging(); err != nil {
 				return err
 			}
+
+			vi := s.VehicleInfo()
+			fmt.Printf("Charging turned on for %s (%s)\n", vi.Nickname, vi.VIN)
 
 			return nil
 		},
@@ -229,7 +238,8 @@ func locateCmd(cfg *config) *ffcli.Command {
 				return err
 			}
 
-			fmt.Printf("Vehicle location as of %s:\n", loc.ReceivedDate.Local())
+			vi := s.VehicleInfo()
+			fmt.Printf("Vehicle location of %s (%s) as of %s:\n", vi.Nickname, vi.VIN, loc.ReceivedDate.Local())
 			fmt.Printf("  Latitude: %s\n", loc.Latitude)
 			fmt.Printf("  Longitude: %s\n", loc.Longitude)
 			fmt.Printf("  Link: https://www.google.com/maps/place/%s,%s\n", loc.Latitude, loc.Longitude)
@@ -240,8 +250,8 @@ func locateCmd(cfg *config) *ffcli.Command {
 	}
 }
 
-func printBatteryRecords(cfg *config, br *leaf.BatteryRecords) {
-	fmt.Printf("Battery status as of %s:\n", br.LastUpdatedDateAndTime.Local())
+func printBatteryRecords(cfg *config, vi *leaf.VehicleInfo, br *leaf.BatteryRecords) {
+	fmt.Printf("Battery status for %s (%s) as of %s:\n", vi.Nickname, vi.VIN, br.LastUpdatedDateAndTime.Local())
 	fmt.Printf("  Battery remaining: %d%%\n", br.BatteryStatus.BatteryRemainingAmount)
 	if br.CruisingRangeACOn > 0 {
 		fmt.Printf("  Cruising range: %s (%s with heat/AC)\n", prettyUnits(cfg.units, br.CruisingRangeACOff), prettyUnits(cfg.units, br.CruisingRangeACOn))
@@ -262,7 +272,6 @@ func printBatteryRecords(cfg *config, br *leaf.BatteryRecords) {
 		fmt.Printf("    (no time-to-full estimates available)\n")
 	}
 	fmt.Println()
-
 }
 
 func prettyUnits(units string, meters float64) string {

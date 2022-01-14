@@ -23,9 +23,9 @@ const (
 var errUnauthorized = errors.New("unauthorized")
 
 type sessionData struct {
-	VIN       string
-	AuthToken string
-	Cookies   []*http.Cookie
+	VehicleInfo VehicleInfo
+	AuthToken   string
+	Cookies     []*http.Cookie
 }
 
 // Session represents a connection to the Nissan API server.
@@ -61,7 +61,12 @@ func (s *Session) Load() error {
 		return err
 	}
 
-	if s.VIN != "" && s.VIN != sessionData.VIN {
+	// Discard old session data if it doesn't include vehcicle info.
+	if sessionData.VehicleInfo.VIN == "" {
+		return nil
+	}
+
+	if s.VIN != "" && s.VIN != sessionData.VehicleInfo.VIN {
 		// VINs don't match, so discard this session data
 		return nil
 	}
@@ -332,7 +337,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, e
 			}
 		}
 		if idx == -1 {
-			return nil, nil, nil, fmt.Errorf("no matching VIN %s found amon %d vehicles", s.VIN, len(respBody.Vehicles))
+			return nil, nil, nil, fmt.Errorf("no matching VIN %s found among %d vehicles", s.VIN, len(respBody.Vehicles))
 		}
 	} else {
 		idx = 0
@@ -340,7 +345,7 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, e
 
 	vehicle := respBody.Vehicles[idx]
 
-	s.data.VIN = vehicle.VIN
+	s.data.VehicleInfo = vehicle.VehicleInfo
 	s.data.AuthToken = respBody.AuthToken
 	s.data.Cookies = resp.Cookies()
 
@@ -351,11 +356,15 @@ func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, e
 	return &vehicle.VehicleInfo, &vehicle.BatteryRecords, &vehicle.TemperatureRecords, nil
 }
 
+func (s *Session) VehicleInfo() *VehicleInfo {
+	return &s.data.VehicleInfo
+}
+
 // ChargingStatus returns the current battery and temperature records.
 func (s *Session) ChargingStatus() (*BatteryRecords, *TemperatureRecords, error) {
 	resp, err := s.doRetryAuth(
 		"GET",
-		fmt.Sprintf("/battery/vehicles/%s/getChargingStatusRequest", s.data.VIN),
+		fmt.Sprintf("/battery/vehicles/%s/getChargingStatusRequest", s.VehicleInfo().VIN),
 		nil,
 	)
 	if err != nil {
@@ -388,9 +397,9 @@ func (s *Session) climateOnOff(on bool) error {
 
 	var endpoint string
 	if on {
-		endpoint = fmt.Sprintf("/hvac/vehicles/%s/activateHVAC", s.data.VIN)
+		endpoint = fmt.Sprintf("/hvac/vehicles/%s/activateHVAC", s.VehicleInfo().VIN)
 	} else {
-		endpoint = fmt.Sprintf("/hvac/vehicles/%s/deactivateHVAC", s.data.VIN)
+		endpoint = fmt.Sprintf("/hvac/vehicles/%s/deactivateHVAC", s.VehicleInfo().VIN)
 	}
 
 	resp, err := s.doRetryAuth("POST", endpoint, reqBody)
@@ -425,7 +434,7 @@ func (s *Session) ClimateOff() error {
 func (s *Session) StartCharging() error {
 	resp, err := s.doRetryAuth(
 		"POST",
-		fmt.Sprintf("/battery/vehicles/%s/remoteChargingRequest", s.data.VIN),
+		fmt.Sprintf("/battery/vehicles/%s/remoteChargingRequest", s.VehicleInfo().VIN),
 		nil,
 	)
 	if err != nil {
@@ -469,7 +478,7 @@ func (s *Session) LocateVehicle() (*Location, error) {
 
 	resp, err := s.doRetryAuth(
 		"POST",
-		fmt.Sprintf("/vehicleLocator/vehicles/%s/refreshVehicleLocator", s.data.VIN),
+		fmt.Sprintf("/vehicleLocator/vehicles/%s/refreshVehicleLocator", s.VehicleInfo().VIN),
 		reqBody,
 	)
 	if err != nil {
