@@ -36,6 +36,7 @@ type Session struct {
 	Debug    bool
 	Filename string
 	VIN      string
+	PIN      string
 
 	data sessionData
 }
@@ -511,4 +512,255 @@ func (s *Session) LocateVehicle() (*Location, error) {
 		Longitude:    respBody.E.E.Body.Location.Longitude,
 		ReceivedDate: respBody.E.E.Head.ReceivedDate,
 	}, nil
+}
+
+// There is an alternate API for non-EV tasks like locking/unlocking the
+// doors, flashing the lights and honking the horn.
+type telematicsLogin struct {
+	AccessToken string `json:"access_token"`
+	AccountID   string `json:"account_id"`
+	CVAPIKey    string `json:"CVApiKey"`
+}
+
+func (s *Session) telematicsLogin() (*telematicsLogin, error) {
+	body := fmt.Sprintf(
+		`{"username": "NISNNAVCS/%s", "password": "%s"}`,
+		s.Username, s.Password,
+	)
+
+	req, err := http.NewRequest(
+		"POST",
+		"https://mobile.telematics.net/login/token",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("CV-APPID", "cv.nissan.connect.us.android.25")
+
+	if s.Debug {
+		body, _ := httputil.DumpRequest(req, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if s.Debug {
+		body, _ := httputil.DumpResponse(resp, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		return nil, errors.New("got non-JSON response")
+	}
+
+	var respBody telematicsLogin
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return nil, err
+	}
+
+	return &respBody, nil
+}
+
+func (s *Session) telematicsRequest(t *telematicsLogin, endpoint, command string) (string, error) {
+	url := fmt.Sprintf(
+		"https://prd.api.telematics.net/m/remote/accounts/niscust:nis:%s/vehicles/%s/%s",
+		t.AccountID, s.VehicleInfo().VIN, endpoint,
+	)
+	body := fmt.Sprintf(
+		`{"command":"%s", "pin":"%s"}`,
+		command, s.PIN,
+	)
+
+	req, err := http.NewRequest("POST", url, strings.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.AccessToken))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("CV-ApiKey", t.CVAPIKey)
+	req.Header.Set("CV-AppType", "MOBILE")
+
+	if s.Debug {
+		body, _ := httputil.DumpRequest(req, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if s.Debug {
+		body, _ := httputil.DumpResponse(resp, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		return "", fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		return "", errors.New("got non-JSON response")
+	}
+
+	var respBody struct {
+		ServiceRequestID string `json:"serviceRequestId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return "", err
+	}
+
+	return respBody.ServiceRequestID, nil
+}
+
+func (s *Session) getTelematicsRequestStatus(t *telematicsLogin, endpoint, command, requestID string) (string, error) {
+	url := fmt.Sprintf(
+		"https://prd.api.telematics.net/m/remote/accounts/niscust:nis:%s/vehicles/%s/%s/%s?serviceType=%s",
+		t.AccountID, s.VehicleInfo().VIN, endpoint, requestID, command,
+	)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.AccessToken))
+	req.Header.Set("CV-ApiKey", t.CVAPIKey)
+	req.Header.Set("CV-AppType", "MOBILE")
+
+	if s.Debug {
+		body, _ := httputil.DumpRequest(req, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if s.Debug {
+		body, _ := httputil.DumpResponse(resp, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		return "", errors.New("got non-JSON response")
+	}
+
+	var respBody struct {
+		Status               string `json:"status"`
+		ServiceType          string `json:"serviceType"`
+		ServiceRequestID     string `json:"serviceRequestId"`
+		ActivationDateTime   string `json:"activationDateTime"`
+		StatusChangeDateTime string `json:"statusChangeDateTime"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return "", err
+	}
+
+	return respBody.Status, nil
+}
+
+func (s *Session) waitForTelematicsRequest(t *telematicsLogin, endpoint, command, requestID string, timeout time.Duration) error {
+	cutoff := time.Now().Add(timeout)
+	for {
+		if time.Now().After(cutoff) {
+			return errors.New("timed out waiting for door lock")
+		}
+
+		status, err := s.getTelematicsRequestStatus(t, "remote-door", "LOCK", requestID)
+		if err != nil {
+			return err
+		}
+
+		if status == "SUCCESS" {
+			return nil
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// LockDoors locks the vehicle doors.
+func (s *Session) LockDoors() error {
+	t, err := s.telematicsLogin()
+	if err != nil {
+		return err
+	}
+
+	requestID, err := s.telematicsRequest(t, "remote-door", "LOCK")
+	if err != nil {
+		return err
+	}
+
+	return s.waitForTelematicsRequest(t, "remote-door", "LOCK", requestID, time.Minute)
+}
+
+// UnlockDoors unlocks the vehicle doors.
+func (s *Session) UnlockDoors() error {
+	t, err := s.telematicsLogin()
+	if err != nil {
+		return err
+	}
+
+	requestID, err := s.telematicsRequest(t, "remote-door", "UNLOCK")
+	if err != nil {
+		return err
+	}
+
+	return s.waitForTelematicsRequest(t, "remote-door", "UNLOCK", requestID, time.Minute)
+}
+
+// FlashLights flashes the vehicle lights.
+func (s *Session) FlashLights() error {
+	t, err := s.telematicsLogin()
+	if err != nil {
+		return err
+	}
+
+	requestID, err := s.telematicsRequest(t, "remote-horn-and-lights", "LIGHT_ONLY")
+	if err != nil {
+		return err
+	}
+
+	return s.waitForTelematicsRequest(t, "remote-horn-and-lights", "LIGHT_ONLY", requestID, time.Minute)
+}
+
+// Honk honks the vehicle horn and flashes the lights.
+func (s *Session) Honk() error {
+	t, err := s.telematicsLogin()
+	if err != nil {
+		return err
+	}
+
+	requestID, err := s.telematicsRequest(t, "remote-horn-and-lights", "HORN_LIGHT")
+	if err != nil {
+		return err
+	}
+
+	return s.waitForTelematicsRequest(t, "remote-horn-and-lights", "HORN_LIGHT", requestID, time.Minute)
 }

@@ -24,6 +24,7 @@ type config struct {
 	password    string
 	country     string
 	vin         string
+	pin         string
 	units       string
 	sessionFile string
 	debug       bool
@@ -37,6 +38,7 @@ func main() {
 	fs.StringVar(&cfg.password, "password", "", "Nissan password")
 	fs.StringVar(&cfg.country, "country", "US", "Vehicle country")
 	fs.StringVar(&cfg.vin, "vin", "", "Request from a specific VIN")
+	fs.StringVar(&cfg.pin, "pin", "", "PIN protecting remote commands")
 	fs.StringVar(&cfg.units, "units", unitsMiles, "Units (mi/km)")
 	fs.StringVar(&cfg.sessionFile, "session-file", "~/.leaf-session", "File to load/store session info")
 	fs.BoolVar(&cfg.debug, "debug", false, "Print debugging output")
@@ -62,6 +64,10 @@ func main() {
 			climateOffCmd(&cfg),
 			chargeCmd(&cfg),
 			locateCmd(&cfg),
+			lockCmd(&cfg),
+			unlockCmd(&cfg),
+			flashCmd(&cfg),
+			honkCmd(&cfg),
 		},
 	}
 
@@ -78,6 +84,7 @@ func newSession(cfg *config) *leaf.Session {
 		Debug:    cfg.debug,
 		Filename: cfg.sessionFile,
 		VIN:      cfg.vin,
+		PIN:      cfg.pin,
 	}
 
 	if err := s.Load(); err != nil {
@@ -244,6 +251,94 @@ func locateCmd(cfg *config) *ffcli.Command {
 			fmt.Printf("  Longitude: %s\n", loc.Longitude)
 			fmt.Printf("  Link: https://www.google.com/maps/place/%s,%s\n", loc.Latitude, loc.Longitude)
 			fmt.Println()
+
+			return nil
+		},
+	}
+}
+
+func lockCmd(cfg *config) *ffcli.Command {
+	return &ffcli.Command{
+		Name:       "lock",
+		ShortUsage: "leaf lock",
+		ShortHelp:  "Lock vehicle doors",
+		Exec: func(ctx context.Context, args []string) error {
+			fmt.Println("Locking vehicle...")
+
+			s := newSession(cfg)
+
+			if err := s.LockDoors(); err != nil {
+				return err
+			}
+
+			vi := s.VehicleInfo()
+			fmt.Printf("Vehicle %s (%s) locked\n", vi.Nickname, vi.VIN)
+
+			return nil
+		},
+	}
+}
+
+func unlockCmd(cfg *config) *ffcli.Command {
+	return &ffcli.Command{
+		Name:       "unlock",
+		ShortUsage: "leaf unlock",
+		ShortHelp:  "Unlock vehicle doors",
+		Exec: func(ctx context.Context, args []string) error {
+			fmt.Println("Unlocking vehicle...")
+
+			s := newSession(cfg)
+
+			if err := s.UnlockDoors(); err != nil {
+				return err
+			}
+
+			vi := s.VehicleInfo()
+			fmt.Printf("Vehicle %s (%s) unlocked\n", vi.Nickname, vi.VIN)
+
+			return nil
+		},
+	}
+}
+
+func flashCmd(cfg *config) *ffcli.Command {
+	return &ffcli.Command{
+		Name:       "flash",
+		ShortUsage: "leaf flash",
+		ShortHelp:  "Flash vehicle lights",
+		Exec: func(ctx context.Context, args []string) error {
+			fmt.Println("Flashing vehicle lights...")
+
+			s := newSession(cfg)
+
+			if err := s.FlashLights(); err != nil {
+				return err
+			}
+
+			vi := s.VehicleInfo()
+			fmt.Printf("Vehicle %s (%s) lights flashed\n", vi.Nickname, vi.VIN)
+
+			return nil
+		},
+	}
+}
+
+func honkCmd(cfg *config) *ffcli.Command {
+	return &ffcli.Command{
+		Name:       "honk",
+		ShortUsage: "leaf honk",
+		ShortHelp:  "Honk vehicle horn and flash the lights",
+		Exec: func(ctx context.Context, args []string) error {
+			fmt.Println("Honking vehicle horn...")
+
+			s := newSession(cfg)
+
+			if err := s.Honk(); err != nil {
+				return err
+			}
+
+			vi := s.VehicleInfo()
+			fmt.Printf("Vehicle %s (%s) honked\n", vi.Nickname, vi.VIN)
 
 			return nil
 		},
