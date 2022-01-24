@@ -17,7 +17,7 @@ import (
 const (
 	baseURL      = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
 	apiKey       = "Z9bNvSz8NZf0J3fLhwA3U27G4HQpwMBMYPHd3B+uzeWstfRPEue8AoS/xjIz34k8"
-	userAgentKey = "pZiN3BSpfjtVulW6QB52Itw6rc5YEDZXKGlKzGsTvPY="
+	userAgentKey = "zoJ0paOf/bCLNirsZBPQuoqtLr+OzJFdNOhLo0hrjkM="
 )
 
 var errUnauthorized = errors.New("unauthorized")
