@@ -2,6 +2,8 @@ package leaf
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,9 +25,11 @@ const (
 var errUnauthorized = errors.New("unauthorized")
 
 type sessionData struct {
-	VehicleInfo VehicleInfo
-	AuthToken   string
-	Cookies     []*http.Cookie
+	VehicleInfo   VehicleInfo
+	AuthToken     string
+	Cookies       []*http.Cookie
+	AppInstanceID string
+	UserAgentKey  string
 }
 
 // Session represents a connection to the Nissan API server.
@@ -52,6 +56,9 @@ func (s *Session) Load() error {
 	}
 
 	f, err := os.Open(s.Filename)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -113,7 +120,8 @@ func (s *Session) do(method, endpoint string, v interface{}) (*http.Response, er
 	}
 
 	req.Header.Set("API-Key", apiKey)
-	req.Header.Set("User-Agent-Key", userAgentKey)
+	req.Header.Set("User-Agent-Key", s.data.UserAgentKey)
+	req.Header.Set("User-Agent", "")
 
 	if r != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -128,7 +136,7 @@ func (s *Session) do(method, endpoint string, v interface{}) (*http.Response, er
 	}
 
 	if s.Debug {
-		body, _ := httputil.DumpRequest(req, true)
+		body, _ := httputil.DumpRequestOut(req, true)
 		fmt.Fprintln(os.Stderr, string(body))
 		fmt.Fprintln(os.Stderr)
 	}
@@ -287,8 +295,98 @@ type VehicleInfo struct {
 	Nickname  string `json:"nickname"`
 }
 
+func generateAppInstanceID() string {
+	in := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, in); err != nil {
+		panic(err)
+	}
+
+	return base64.StdEncoding.EncodeToString(in)
+}
+
+func (s *Session) getUserAgentKey() error {
+	const (
+		appID          = "1:25831104952:android:364bc23813c51afc"
+		projectID      = "25831104952"
+		apiKey         = "AIzaSyBOFbpZI5N9zjx60DWWHETK52P0cTJ2RmM"
+		androidPackage = "com.aqsmartphone.android.nissan"
+		androidCert    = "94A5A06227EDB35F48BCA5092C2C091AD44C76EE"
+	)
+
+	var reqBody struct {
+		AppID         string `json:"appId"`
+		AppInstanceID string `json:"appInstanceId"`
+	}
+
+	reqBody.AppID = appID
+	if s.data.AppInstanceID == "" {
+		s.data.AppInstanceID = generateAppInstanceID()
+	}
+	reqBody.AppInstanceID = s.data.AppInstanceID
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	u := fmt.Sprintf(
+		"https://firebaseremoteconfig.googleapis.com/v1/projects/%s/namespaces/firebase:fetch",
+		projectID,
+	)
+	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "")
+	req.Header.Set("X-Goog-Api-Key", apiKey)
+	req.Header.Set("X-Android-Package", androidPackage)
+	req.Header.Set("X-Android-Cert", androidCert)
+
+	if s.Debug {
+		body, _ := httputil.DumpRequestOut(req, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if s.Debug {
+		body, _ := httputil.DumpResponse(resp, true)
+		fmt.Fprintln(os.Stderr, string(body))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	var respBody struct {
+		Entries struct {
+			WelcomeMessage string `json:"welcome_message"`
+		} `json:"entries"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return err
+	}
+
+	s.data.UserAgentKey = respBody.Entries.WelcomeMessage
+
+	return nil
+}
+
 // Login sets up a new session with the Nissan API and retrieves the last known vehicle, battery and temperature records.
 func (s *Session) Login() (*VehicleInfo, *BatteryRecords, *TemperatureRecords, error) {
+	if err := s.getUserAgentKey(); err != nil {
+		return nil, nil, nil, err
+	}
+
 	var reqBody struct {
 		Authenticate struct {
 			UserID   string `json:"userid"`
@@ -541,7 +639,7 @@ func (s *Session) telematicsLogin() (*telematicsLogin, error) {
 	req.Header.Set("CV-APPID", "cv.nissan.connect.us.android.25")
 
 	if s.Debug {
-		body, _ := httputil.DumpRequest(req, true)
+		body, _ := httputil.DumpRequestOut(req, true)
 		fmt.Fprintln(os.Stderr, string(body))
 		fmt.Fprintln(os.Stderr)
 	}
@@ -595,7 +693,7 @@ func (s *Session) telematicsRequest(t *telematicsLogin, endpoint, command string
 	req.Header.Set("CV-AppType", "MOBILE")
 
 	if s.Debug {
-		body, _ := httputil.DumpRequest(req, true)
+		body, _ := httputil.DumpRequestOut(req, true)
 		fmt.Fprintln(os.Stderr, string(body))
 		fmt.Fprintln(os.Stderr)
 	}
@@ -646,7 +744,7 @@ func (s *Session) getTelematicsRequestStatus(t *telematicsLogin, endpoint, comma
 	req.Header.Set("CV-AppType", "MOBILE")
 
 	if s.Debug {
-		body, _ := httputil.DumpRequest(req, true)
+		body, _ := httputil.DumpRequestOut(req, true)
 		fmt.Fprintln(os.Stderr, string(body))
 		fmt.Fprintln(os.Stderr)
 	}
