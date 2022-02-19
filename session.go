@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	baseURL      = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
-	apiKey       = "bJG8LvpcRAAOrVQ8GByIzWkR4n993iccFtKNs1sn+gheOFGnT6ABaR6cvclCXetW"
-	userAgentKey = "zoJ0paOf/bCLNirsZBPQuoqtLr+OzJFdNOhLo0hrjkM="
+	baseURL = "https://icm.infinitiusa.com/NissanConnectEVProd/rest"
+	apiKey  = "bJG8LvpcRAAOrVQ8GByIzWkR4n993iccFtKNs1sn+gheOFGnT6ABaR6cvclCXetW"
 )
 
 var errUnauthorized = errors.New("unauthorized")
@@ -305,80 +304,105 @@ func generateAppInstanceID() string {
 }
 
 func (s *Session) getUserAgentKey() error {
-	const (
-		appID          = "1:25831104952:android:364bc23813c51afc"
-		projectID      = "25831104952"
-		apiKey         = "AIzaSyBOFbpZI5N9zjx60DWWHETK52P0cTJ2RmM"
-		androidPackage = "com.aqsmartphone.android.nissan"
-		androidCert    = "94A5A06227EDB35F48BCA5092C2C091AD44C76EE"
-	)
-
-	var reqBody struct {
-		AppID         string `json:"appId"`
-		AppInstanceID string `json:"appInstanceId"`
-	}
-
-	reqBody.AppID = appID
-	if s.data.AppInstanceID == "" {
-		s.data.AppInstanceID = generateAppInstanceID()
-	}
-	reqBody.AppInstanceID = s.data.AppInstanceID
-
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
-	}
-
-	u := fmt.Sprintf(
-		"https://firebaseremoteconfig.googleapis.com/v1/projects/%s/namespaces/firebase:fetch",
-		projectID,
-	)
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "")
-	req.Header.Set("X-Goog-Api-Key", apiKey)
-	req.Header.Set("X-Android-Package", androidPackage)
-	req.Header.Set("X-Android-Cert", androidCert)
-
-	if s.Debug {
-		body, _ := httputil.DumpRequestOut(req, true)
-		fmt.Fprintln(os.Stderr, string(body))
-		fmt.Fprintln(os.Stderr)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	// TODO(joeshaw): For now, grab the key from the
+	// Tobiaswk/dartnissanconnectna repo
+	resp, err := http.Get("https://gitlab.com/tobiaswkjeldsen/dartnissanconnectna/-/raw/master/user_agent_key")
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if s.Debug {
-		body, _ := httputil.DumpResponse(resp, true)
-		fmt.Fprintln(os.Stderr, string(body))
-		fmt.Fprintln(os.Stderr)
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
 	}
 
-	var respBody struct {
-		Entries struct {
-			WelcomeMessage string `json:"welcome_message"`
-		} `json:"entries"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
 		return err
 	}
 
-	s.data.UserAgentKey = respBody.Entries.WelcomeMessage
-
+	s.data.UserAgentKey = strings.TrimSpace(string(data))
 	return nil
+
+	// The old code...
+
+	/*
+
+		const (
+			appID          = "1:25831104952:android:364bc23813c51afc"
+			projectID      = "25831104952"
+			apiKey         = "AIzaSyBOFbpZI5N9zjx60DWWHETK52P0cTJ2RmM"
+			androidPackage = "com.aqsmartphone.android.nissan"
+			androidCert    = "94A5A06227EDB35F48BCA5092C2C091AD44C76EE"
+		)
+
+		var reqBody struct {
+			AppID         string `json:"appId"`
+			AppInstanceID string `json:"appInstanceId"`
+		}
+
+		reqBody.AppID = appID
+		if s.data.AppInstanceID == "" {
+			s.data.AppInstanceID = generateAppInstanceID()
+		}
+		reqBody.AppInstanceID = s.data.AppInstanceID
+
+		body, err := json.Marshal(reqBody)
+		if err != nil {
+			return err
+		}
+
+		u := fmt.Sprintf(
+			"https://firebaseremoteconfig.googleapis.com/v1/projects/%s/namespaces/firebase:fetch",
+			projectID,
+		)
+		req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "")
+		req.Header.Set("X-Goog-Api-Key", apiKey)
+		req.Header.Set("X-Android-Package", androidPackage)
+		req.Header.Set("X-Android-Cert", androidCert)
+
+		if s.Debug {
+			body, _ := httputil.DumpRequestOut(req, true)
+			fmt.Fprintln(os.Stderr, string(body))
+			fmt.Fprintln(os.Stderr)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if s.Debug {
+			body, _ := httputil.DumpResponse(resp, true)
+			fmt.Fprintln(os.Stderr, string(body))
+			fmt.Fprintln(os.Stderr)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+		}
+
+		var respBody struct {
+			Entries struct {
+				WelcomeMessage string `json:"welcome_message"`
+			} `json:"entries"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+			return err
+		}
+
+		s.data.UserAgentKey = respBody.Entries.WelcomeMessage
+
+		return nil
+	*/
 }
 
 // Login sets up a new session with the Nissan API and retrieves the last known vehicle, battery and temperature records.
